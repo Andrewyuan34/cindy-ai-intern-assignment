@@ -6,5 +6,8 @@ export function aggregateCI(checks) {
   if (checks.some((check) => check.status !== 'completed')) {
     return 'pending';
   }
+  if (checks.some((check) => check.conclusion === 'failure')) {
+    return 'failure';
+  }
   return 'success';
 }
