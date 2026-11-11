@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR 诊断</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <main class="dashboard">
+    <header class="dashboard-header">
+      <h1>PR 诊断</h1>
+      <p class="refresh-note">在任务主对话中查看诊断结果，或继续向 AI 提问。</p>
+    </header>
+    <p id="context-loading" class="notice" role="status">正在读取此任务关联的 PR…</p>
+    <p id="context-error" class="error-message" role="alert" hidden></p>
+    <section id="task-context" class="pr-card" aria-label="关联的拉取请求" hidden>
+      <p class="pr-meta">此任务关联的拉取请求</p>
+      <h2 id="pr-title" class="pr-title"></h2>
+      <p id="pr-account" class="pr-byline"></p>
+      <a id="pr-link" class="secondary-button" rel="noopener noreferrer">在 GitHub 查看 PR</a>
+    </section>
+    <button id="retry-context" class="secondary-button" type="button" hidden>重新读取关联</button>
+  </main>
+  <script type="module" src="task.js"></script>
+</body>
+</html>

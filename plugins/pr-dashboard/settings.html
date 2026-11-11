@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR 看板设置</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <main class="settings">
+    <h1>连接 GitHub</h1>
+    <p id="settings-intro" class="settings-intro">优先复用 Cindy 管理的本机 GitHub 登录。已有可用登录即可使用，无需另外填写 Token。</p>
+    <div id="connection-status" class="connection-status" role="status">正在读取连接状态…</div>
+    <details id="pat-section">
+      <summary>使用备用 Personal Access Token</summary>
+      <p class="settings-help">本机 GitHub 登录不可用时，宿主才会使用此备用 Token。访问范围由 Token 权限及账号的仓库权限共同决定。</p>
+      <form id="token-form">
+        <label for="github-token">备用 Token</label>
+        <input id="github-token" type="password" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="粘贴 GitHub Token" aria-describedby="token-help">
+        <p id="token-help" class="settings-help">提交后由 Cindy 加密保管，页面只读取保存状态，不读取已保存的 Token。</p>
+        <div class="settings-actions"><button id="save-token" class="primary-button" type="submit">保存备用 Token</button><button id="remove-token" class="secondary-button" type="button" disabled>移除备用 Token</button></div>
+      </form>
+      <p class="settings-help"><a class="text-link" href="https://github.com/settings/tokens" rel="noopener noreferrer">在 GitHub 管理 Token ↗</a></p>
+    </details>
+    <p id="settings-message" class="notice" role="status" hidden></p>
+  </main>
+  <script type="module" src="settings.js"></script>
+</body>
+</html>

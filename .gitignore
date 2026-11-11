@@ -1,0 +1,2 @@
+# Cindy Forge outputs are delivered separately from the editable plugin source.
+plugins/pr-dashboard/*.cindy
