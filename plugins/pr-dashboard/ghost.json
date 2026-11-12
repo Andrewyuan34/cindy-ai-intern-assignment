@@ -4,7 +4,7 @@
   "name": "我的 PR 看板",
   "description": "查看我创建的和待我审阅的未关闭 PR、最新提交的 CI 状态，并在独立任务中诊断。",
   "whenToUse": "查看我的未关闭 GitHub PR、待我审阅的 PR、CI 检查结果、失败步骤和错误注释时使用。",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "minCindyVersion": "0.1.126",
   "entry": "main.js",
   "launch": "on-demand",

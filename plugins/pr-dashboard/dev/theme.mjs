@@ -1,4 +1,4 @@
-let dark = false;
+let dark = new URLSearchParams(location.search).get('theme') === 'dark';
 function apply() {
   document.body.classList.toggle('dark', dark);
   for (const frame of document.querySelectorAll('main iframe')) {
@@ -9,5 +9,12 @@ function apply() {
     root.style.colorScheme = dark ? 'dark' : 'light';
   }
 }
-document.querySelector('#theme').addEventListener('click', () => { dark = !dark; apply(); });
+document.querySelector('#theme').addEventListener('click', () => {
+  dark = !dark;
+  const url = new URL(location.href);
+  url.searchParams.set('theme', dark ? 'dark' : 'light');
+  history.replaceState(null, '', url);
+  apply();
+});
 for (const frame of document.querySelectorAll('main iframe')) frame.addEventListener('load', apply);
+apply();

@@ -40,6 +40,11 @@
         return { ...run, status: 'completed' };
       },
     },
+    async taskView({ sessionId, focus }) {
+      if (!sessionId || focus !== true) return { ok: false, errorCode: 'INVALID_REQUEST' };
+      if (parent !== window) parent.postMessage({ type: 'pr-preview-navigation', taskId: sessionId }, parent.location.origin);
+      return { ok: true, sessionId, focusRequested: true };
+    },
     onHostMessage() {}, send() {},
   };
 })();

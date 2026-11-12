@@ -1,4 +1,5 @@
 import { createRpc } from './lib/rpc.mjs';
+import { icon } from './lib/icons.mjs';
 
 const $ = (id) => document.getElementById(id);
 const EMPTY_LIST = { items: [], totalCount: null, loading: false, hasMore: false };
@@ -12,6 +13,7 @@ let localError = '';
 const operations = new Set();
 const localDiagnoses = new Map();
 const openDetails = new Set();
+const openMenus = new Set();
 const openingTasks = new Set();
 const navigationErrors = new Map();
 const ACTIVE_DIAGNOSES = new Set(['queued', 'running', 'stopping']);
@@ -51,6 +53,7 @@ function acceptSnapshot(data) {
     localDiagnoses.clear();
     navigationErrors.clear();
     openDetails.clear();
+    openMenus.clear();
   }
   snapshot = data;
   if (!hydrated && ['authored', 'review'].includes(data.activeKind)) activeKind = data.activeKind;
@@ -83,20 +86,21 @@ function restoreCardFocus(previous, key) {
   if (!key || previous?.isConnected || !document.hasFocus()) return;
   const target = [...$('pr-list').querySelectorAll('[data-focus-key]')].find(element => element.dataset.focusKey === key);
   if (!target) return;
-  const destination = target.disabled ? target.closest('.pr-card') : target;
+  const menu = target.closest('.pr-more');
+  const destination = menu && !menu.open ? menu.querySelector('summary') : target.disabled ? target.closest('.pr-card') : target;
   destination?.focus({ preventScroll: true });
 }
 
 function ciState(value) {
   const state = String(value || '').toLowerCase();
-  if (state === 'loading') return ['pending', '正在读取检查'];
-  if (['success', 'passed', 'pass'].includes(state)) return ['success', '检查通过'];
-  if (['failure', 'failed', 'error', 'timed_out', 'action_required', 'startup_failure'].includes(state)) return ['failure', '检查未通过'];
-  if (['pending', 'queued', 'in_progress', 'running', 'waiting', 'requested'].includes(state)) return ['pending', '检查进行中'];
-  if (['none', 'no_checks', 'empty'].includes(state)) return ['', '暂无检查'];
-  if (['cancelled', 'canceled'].includes(state)) return ['', '检查已取消'];
-  if (['neutral', 'skipped'].includes(state)) return ['', '检查已结束'];
-  return ['', '检查状态未知'];
+  if (state === 'loading') return ['pending', '读取中', 'loader-circle'];
+  if (['success', 'passed', 'pass'].includes(state)) return ['success', '检查通过', 'circle-check'];
+  if (['failure', 'failed', 'error', 'timed_out', 'action_required', 'startup_failure'].includes(state)) return ['failure', '检查失败', 'circle-x'];
+  if (['pending', 'queued', 'in_progress', 'running', 'waiting', 'requested'].includes(state)) return ['pending', '检查中', 'clock-3'];
+  if (['none', 'no_checks', 'empty'].includes(state)) return ['', '暂无检查', 'circle-minus'];
+  if (['cancelled', 'canceled'].includes(state)) return ['', '已取消', 'circle-minus'];
+  if (['neutral', 'skipped'].includes(state)) return ['', '已结束', 'circle-minus'];
+  return ['unknown', '状态未知', 'circle-alert'];
 }
 
 function checkLabel(check) {
@@ -107,16 +111,27 @@ function checkLabel(check) {
 
 function renderCi(ci = {}, key) {
   if (!ci || typeof ci !== 'object') ci = {};
-  const details = node('details', 'ci-details');
-  details.open = openDetails.has(key);
-  details.addEventListener('toggle', () => {
-    if (!details.isConnected) return;
-    if (details.open) openDetails.add(key); else openDetails.delete(key);
+  const details = node('div', 'ci-details');
+  details.id = `ci-${encodeURIComponent(key)}`;
+  details.hidden = !openDetails.has(key);
+  const summary = focusMark(node('button', 'ci-toggle'), `${key}:ci`);
+  summary.type = 'button';
+  summary.setAttribute('aria-expanded', String(!details.hidden));
+  summary.setAttribute('aria-controls', details.id);
+  let [tone, label, symbol] = ciState(ci.state);
+  if (ci.partial) {
+    label = tone === 'failure' ? '检查失败 · 不完整' : '检查信息不全';
+    if (tone !== 'failure') { tone = 'warning'; symbol = 'triangle-alert'; }
+  }
+  const badge = node('span', `ci-badge ${tone}`);
+  badge.append(icon(symbol, ci.state === 'loading' ? 'is-spinning' : ''), node('span', '', label));
+  summary.append(badge, icon('chevron-down', 'ci-chevron'));
+  summary.title = '展开或收起检查明细';
+  summary.addEventListener('click', () => {
+    details.hidden = !details.hidden;
+    summary.setAttribute('aria-expanded', String(!details.hidden));
+    if (!details.hidden) openDetails.add(key); else openDetails.delete(key);
   });
-  const summary = focusMark(node('summary'), `${key}:ci`);
-  const [tone, label] = ciState(ci.state);
-  summary.append(node('span', `ci-badge ${tone}`, label));
-  details.append(summary);
   const checks = Array.isArray(ci.checks) ? ci.checks : [];
   const statuses = Array.isArray(ci.statuses) ? ci.statuses : [];
   const entries = [...checks, ...statuses].filter((entry) => entry && typeof entry === 'object');
@@ -131,7 +146,7 @@ function renderCi(ci = {}, key) {
     }
     details.append(list);
   } else {
-    details.append(node('p', 'ci-note', '尚无可展示的检查明细。'));
+    details.append(node('p', 'ci-note', ci.state === 'loading' ? '正在读取最新提交的检查。' : '最新提交暂无可展示的检查明细。'));
   }
   if (ci.partial) details.append(node('p', 'ci-note', '检查信息不完整，当前状态可能尚未包含全部结果。'));
   const errors = Array.isArray(ci.errors) ? ci.errors : ci.errors ? [ci.errors] : [];
@@ -139,20 +154,22 @@ function renderCi(ci = {}, key) {
     const text = errorText(error);
     if (text) details.append(node('p', 'ci-note', text));
   }
-  return details;
+  return { summary, details };
 }
 
 function renderDiagnosis(record) {
   if (!record) return null;
   let text = '';
-  if (record.busy) text = '正在交给 AI…';
+  if (record.busy) return null;
   else if (record.taskId) {
-    text = record.status ? `诊断${diagnosisStatus(record.status)}` : '诊断任务已创建';
-    if (record.error || record.reason) text += `。${errorText(record.error || record.reason)}`;
+    if (record.error || record.reason) text = errorText(record.error || record.reason);
+    else if (['needs_input', 'failed', 'interrupted', 'cancelled', 'canceled', 'reconciling'].includes(record.status)) text = `诊断${diagnosisStatus(record.status)}`;
+    else return null;
   } else if (record.error) text = errorText(record.error) || '诊断请求未完成。';
   else if (record.status) text = `诊断状态：${diagnosisStatus(record.status)}`;
   else return null;
-  const element = node('p', `diagnosis${record.error || record.reason ? ' is-error' : ''}`, text);
+  const element = node('p', `diagnosis${record.error || record.reason || record.status === 'failed' ? ' is-error' : record.status === 'needs_input' || record.pending ? ' is-warning' : ''}`, text);
+  element.setAttribute('role', 'status');
   return element;
 }
 
@@ -165,37 +182,76 @@ function renderCard(item) {
   const key = `${item.owner}/${item.repo}#${item.number}`.toLowerCase();
   const card = focusMark(node('article', 'pr-card'), `${key}:card`);
   card.tabIndex = -1;
+  const head = node('div', 'pr-head');
+  const content = node('div', 'pr-content');
   const meta = node('div', 'pr-meta');
   const repoPath = `${encodeURIComponent(item.owner || '')}/${encodeURIComponent(item.repo || '')}`;
   meta.append(focusMark(link(`${item.owner}/${item.repo}`, `https://github.com/${repoPath}`, 'repo-link'), `${key}:repo`), node('span', 'pr-number', `#${item.number}`));
   const heading = node('h2', 'pr-title');
   heading.append(focusMark(link(item.title || '未命名拉取请求', item.url), `${key}:title`));
-  const byline = node('div', 'pr-byline');
+  heading.firstChild.title = item.title || '未命名拉取请求';
   const author = typeof item.author === 'string' ? item.author : item.author?.login;
-  byline.append(node('span', '', author ? `@${author}` : '作者未知'));
-  if (item.draft) byline.append(node('span', 'draft-badge', '草稿'));
+  if (activeKind === 'review' && author) meta.append(node('span', 'pr-author', `@${author}`));
+  if (item.draft) meta.append(node('span', 'draft-badge', '草稿'));
+  content.append(heading, meta);
+  head.append(icon(item.draft ? 'git-pull-request-draft' : 'git-pull-request', 'pr-icon'), content);
   const footer = node('div', 'pr-footer');
-  footer.append(renderCi(item.ci, key));
+  const ci = renderCi(item.ci, key);
+  footer.append(ci.summary);
   const diagnosis = localDiagnoses.get(key) || snapshot.diagnoses?.[key];
   const busy = Boolean(diagnosis?.busy) || ACTIVE_DIAGNOSES.has(diagnosis?.status);
   const retry = diagnosis?.pending || diagnosis?.status === 'reconciling';
   const actions = node('div', 'pr-actions');
-  if (diagnosis?.taskId) {
-    const view = focusMark(node('button', 'view-button', openingTasks.has(key) ? '正在打开…' : '查看诊断'), `${key}:view`);
+  if (diagnosis?.taskId && !retry) {
+    const view = focusMark(node('button', 'view-button'), `${key}:view`);
+    const opening = openingTasks.has(key);
+    view.append(icon(opening || busy ? 'loader-circle' : 'message-square-text', opening || busy ? 'is-spinning' : ''), node('span', '', opening ? '正在打开' : busy ? '分析中' : '查看诊断'));
     view.type = 'button';
-    view.disabled = openingTasks.has(key);
+    view.disabled = opening;
+    view.title = busy ? '打开任务，查看分析进度' : '打开此 PR 的诊断任务';
     view.addEventListener('click', () => { void openDiagnosis(item, key); });
     actions.append(view);
   }
-  const label = diagnosis?.busy ? '正在交接…' : busy ? '分析中' : retry ? '重试交接' : diagnosis?.taskId ? '重新分析' : '分析 CI';
-  const button = focusMark(node('button', `analyze-button${diagnosis?.taskId ? ' secondary-action' : ''}`, label), `${key}:analyze`);
+  const label = diagnosis?.busy ? '正在交接' : busy ? '分析中' : retry ? '重试交接' : diagnosis?.taskId ? '重新分析' : '分析 CI';
+  const secondary = diagnosis?.taskId && !retry;
+  const button = focusMark(node('button', secondary ? 'menu-action' : 'analyze-button'), `${key}:analyze`);
+  button.append(icon(busy ? 'loader-circle' : diagnosis?.taskId || retry ? 'rotate-ccw' : 'scan-search', busy ? 'is-spinning' : ''), node('span', '', label));
   button.type = 'button';
   button.disabled = busy || snapshot.taskSupport?.available !== true;
   button.title = snapshot.taskSupport?.available === true ? '将此 PR 交给 AI 诊断' : snapshot.taskSupport?.reason || '当前宿主尚未确认支持诊断任务';
-  button.addEventListener('click', () => { void diagnose(item, key); });
-  actions.append(button);
+  button.addEventListener('click', () => { closeMenus(); void diagnose(item, key); });
+  const more = node('details', 'pr-more');
+  more.dataset.prKey = key;
+  more.open = openMenus.has(key);
+  const moreToggle = focusMark(node('summary', 'icon-button'), `${key}:more`);
+  moreToggle.title = '更多操作';
+  moreToggle.setAttribute('aria-label', `PR #${item.number} 的更多操作`);
+  moreToggle.append(icon('ellipsis-vertical'));
+  moreToggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    const next = !more.open;
+    closeMenus();
+    more.open = next;
+    if (next) openMenus.add(key);
+  });
+  const menu = node('div', 'more-actions');
+  if (secondary) menu.append(button); else actions.append(button);
+  if (diagnosis?.taskId && retry) {
+    const view = focusMark(node('button', 'menu-action'), `${key}:view`);
+    view.type = 'button';
+    view.disabled = openingTasks.has(key);
+    view.append(icon('message-square-text'), node('span', '', '查看诊断'));
+    view.addEventListener('click', () => { closeMenus(); void openDiagnosis(item, key); });
+    menu.append(view);
+  }
+  const external = focusMark(link('', item.url, 'menu-action'), `${key}:external`);
+  external.append(icon('external-link'), node('span', '', '在 GitHub 打开'));
+  external.addEventListener('click', () => closeMenus());
+  menu.append(external);
+  more.append(moreToggle, menu);
+  head.append(more);
   footer.append(actions);
-  card.append(meta, heading, byline, footer);
+  card.append(head, footer, ci.details);
   const status = renderDiagnosis(diagnosis);
   if (status) card.append(status);
   if (navigationErrors.has(key)) card.append(node('p', 'diagnosis is-error', navigationErrors.get(key)));
@@ -223,7 +279,8 @@ function render() {
   $('refresh').classList.toggle('is-loading', loading);
   $('list-summary').textContent = loading ? (items.length ? '正在更新…' : '正在读取…') : `已显示 ${items.length} 条${Number.isFinite(list.totalCount) ? ` / 共 ${list.totalCount} 条` : ''}`;
   const time = shortTime(list.updatedAt);
-  $('updated-at').textContent = time ? `上次成功更新：${time}` : '';
+  $('updated-at').textContent = loading && items.length ? '更新中…' : time ? `更新于 ${time}` : '';
+  $('updated-at').title = time ? `上次成功更新：${time}` : '';
   if (time) $('updated-at').dateTime = new Date(list.updatedAt).toISOString();
   else $('updated-at').removeAttribute('datetime');
   $('error').textContent = currentError;
@@ -240,8 +297,8 @@ function render() {
   else {
     const empty = node('div', 'empty-state');
     const title = loading ? '正在读取拉取请求' : currentError ? '列表暂时不可用' : !snapshot.viewer ? '先连接 GitHub' : activeKind === 'authored' ? '没有打开的拉取请求' : '暂时没有待评审请求';
-    const detail = loading ? '稍等片刻，结果会显示在这里。' : currentError ? '上方说明了原因，解决后可手动刷新。' : !snapshot.viewer ? '在插件设置中使用 Cindy 的 GitHub 登录。' : '返回前台或点击右上角刷新，可查看最新状态。';
-    empty.append(node('strong', '', title), node('p', '', detail));
+    empty.append(icon(loading ? 'loader-circle' : currentError ? 'circle-alert' : 'inbox', loading ? 'empty-icon is-spinning' : 'empty-icon'), node('strong', '', title));
+    if (!loading && !currentError && !snapshot.viewer) empty.append(node('p', '', '请在插件设置中连接 GitHub。'));
     container.replaceChildren(empty);
   }
   $('load-more').hidden = !list.hasMore;
@@ -313,11 +370,28 @@ async function openDiagnosis(item, key) {
 function selectKind(kind) {
   if (kind === activeKind) return;
   activeKind = kind;
+  closeMenus();
   localError = '';
   render();
   // Selecting an uncached list is a user action, independent of focus deduping.
   if (!snapshot.lists?.[kind]?.updatedAt) void refresh('tab', true);
 }
+function closeMenus(restoreFocus = false) {
+  for (const menu of document.querySelectorAll('.pr-more[open]')) {
+    menu.open = false;
+    if (restoreFocus && menu.contains(document.activeElement)) menu.querySelector('summary')?.focus({ preventScroll: true });
+  }
+  openMenus.clear();
+}
+document.addEventListener('pointerdown', (event) => {
+  if (!event.target.closest('.pr-more')) closeMenus();
+});
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && openMenus.size) { event.preventDefault(); closeMenus(true); }
+});
+document.addEventListener('focusin', (event) => {
+  if (!event.target.closest('.pr-more')) closeMenus();
+});
 for (const kind of ['authored', 'review']) {
   $(`tab-${kind}`).addEventListener('click', () => selectKind(kind));
   $(`tab-${kind}`).addEventListener('keydown', (event) => {
@@ -329,6 +403,7 @@ for (const kind of ['authored', 'review']) {
   });
 }
 $('refresh').addEventListener('click', () => { void refresh('manual', true); });
+$('refresh').replaceChildren(icon('refresh-cw'));
 $('load-more').addEventListener('click', () => { void loadMore(); });
 let foregroundTimer;
 function foregroundRefresh(reason) {
