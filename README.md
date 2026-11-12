@@ -7,6 +7,7 @@
 - [Part 0(a)：项目导览](docs/part0-a-project-guide.md) — 主要模块、插件能力及阅读过程。
 - [Part 0(b)：每日单词卡需求分析](docs/part0-b-word-card-design.md) — 模型接入、用户配置及直接调用 OpenAI 接口方案的评估。
 - [Part B(B1)：我的 PR 看板插件](plugins/pr-dashboard/README.md) — 交付源码 0.1.3，精简面板与静态 Lucide 图标；61 项行为测试通过，已完成 Forge 更新安装、真实 UI 与原任务导航验证。0.1.1 的真实失败诊断、修复绿灯及原任务复用闭环保留为历史证据，0.1.2 已验证无检查场景诊断。
+- [Part B(B1)：做出来——实现与协作说明](docs/part-b1-implementation-review.md) — 做了什么、卡在哪，以及如何指挥 Agent 检查和解决问题。
 
 ## 参考项目与验证范围
 
